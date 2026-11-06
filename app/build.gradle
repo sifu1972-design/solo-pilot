@@ -1,0 +1,48 @@
+plugins {
+    id 'com.android.application'
+}
+
+def buildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+
+android {
+    namespace 'com.milton.solopilot'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.milton.solopilot'
+        minSdk 26
+        targetSdk 34
+        versionCode buildNumber
+        versionName "1.0." + buildNumber
+    }
+
+    // One fixed signing key so each new build installs over the old one.
+    signingConfigs {
+        shared {
+            storeFile file('solopilot.keystore')
+            storePassword 'solopilot'
+            keyAlias 'solopilot'
+            keyPassword 'solopilot'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.shared
+        }
+        release {
+            signingConfig signingConfigs.shared
+            minifyEnabled false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
