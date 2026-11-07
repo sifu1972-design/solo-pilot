@@ -134,33 +134,66 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         NetworkRequest req = new NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                 .build();
         netCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onAvailable(Network network) {
-                wifiNetwork = network;
-                cm.bindProcessToNetwork(network);
-                ui.post(() -> {
-                    if (running) {
-                        startLinks();
-                    }
-                });
+                ui.post(() -> useWifi(network));
             }
 
             @Override
             public void onLost(Network network) {
-                if (network.equals(wifiNetwork)) {
-                    wifiNetwork = null;
-                    cm.bindProcessToNetwork(null);
-                    ui.post(MainActivity.this::stopLinks);
-                }
+                ui.post(() -> {
+                    if (network.equals(wifiNetwork)) {
+                        wifiNetwork = null;
+                        cm.bindProcessToNetwork(null);
+                        stopLinks();
+                    }
+                });
             }
         };
         try {
-            cm.requestNetwork(req, netCallback);
+            // Listen only - don't ask Android to change networks for us.
+            cm.registerNetworkCallback(req, netCallback);
         } catch (Exception e) {
-            addMessage("WiFi request failed: " + e.getMessage());
+            addMessage("WiFi watch failed: " + e.getMessage());
         }
+        findWifi();
+    }
+
+    /** Backup check: look through every network the phone has and pick the WiFi one. */
+    private void findWifi() {
+        if (wifiNetwork != null) {
+            return;
+        }
+        try {
+            for (Network n : cm.getAllNetworks()) {
+                NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+                if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    useWifi(n);
+                    return;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void useWifi(Network network) {
+        if (!running || network.equals(wifiNetwork)) {
+            return;
+        }
+        wifiNetwork = network;
+        boolean bound = false;
+        try {
+            bound = cm.bindProcessToNetwork(network);
+        } catch (Exception ignored) {
+        }
+        addMessage(bound ? "Found WiFi, talking to controller..." : "Found WiFi but couldn't lock onto it");
+        stopLinks();
+        startLinks();
     }
 
     private void startLinks() {
@@ -212,6 +245,9 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
     };
 
     private void updateScreen() {
+        if (wifiNetwork == null) {
+            findWifi();
+        }
         long now = System.currentTimeMillis();
         MavlinkLink l = link;
         MavlinkLink.Telemetry t = l != null ? l.t : null;
