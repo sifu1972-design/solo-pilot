@@ -28,6 +28,7 @@ public class MavlinkLink {
     /** Latest values from the drone. Read from the screen thread. */
     public static class Telemetry {
         public volatile long lastPacketMs;
+        public volatile long packetCount;
         public volatile long lastHeartbeatMs;
         public volatile boolean armed;
         public volatile long customMode = -1;
@@ -116,6 +117,7 @@ public class MavlinkLink {
                 pkt.setLength(buf.length);
                 socket.receive(pkt);
                 t.lastPacketMs = System.currentTimeMillis();
+                t.packetCount++;
                 parse(buf, pkt.getLength());
             } catch (SocketTimeoutException e) {
                 // nothing this second, keep listening

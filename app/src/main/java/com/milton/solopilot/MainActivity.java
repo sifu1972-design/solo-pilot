@@ -194,6 +194,53 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
         addMessage(bound ? "Found WiFi, talking to controller..." : "Found WiFi but couldn't lock onto it");
         stopLinks();
         startLinks();
+        runDiagnostics(network);
+    }
+
+    /** Checks whether the phone can actually reach the controller, and reports in yellow text. */
+    private void runDiagnostics(Network network) {
+        new Thread(() -> {
+            String addr = "unknown";
+            try {
+                android.net.LinkProperties lp = cm.getLinkProperties(network);
+                if (lp != null) {
+                    StringBuilder sb = new StringBuilder();
+                    for (android.net.LinkAddress la : lp.getLinkAddresses()) {
+                        if (la.getAddress() instanceof java.net.Inet4Address) {
+                            sb.append(la.getAddress().getHostAddress()).append(' ');
+                        }
+                    }
+                    if (sb.length() > 0) {
+                        addr = sb.toString().trim();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+            final String phoneAddr = addr;
+            ui.post(() -> addMessage("Phone's WiFi address: " + phoneAddr));
+
+            int[] ports = {22, 5502};
+            for (int port : ports) {
+                String result;
+                java.net.Socket s = null;
+                try {
+                    s = network.getSocketFactory().createSocket();
+                    s.connect(new java.net.InetSocketAddress(MavlinkLink.CONTROLLER_IP, port), 3000);
+                    result = "open";
+                } catch (Exception e) {
+                    result = "closed (" + e.getClass().getSimpleName() + ")";
+                } finally {
+                    if (s != null) {
+                        try {
+                            s.close();
+                        } catch (Exception ignored) {
+                        }
+                    }
+                }
+                final String msg = "Controller port " + port + ": " + result;
+                ui.post(() -> addMessage(msg));
+            }
+        }, "diag").start();
     }
 
     private void startLinks() {
@@ -221,7 +268,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
 
     private void addMessage(String text) {
         messages.addLast(text);
-        while (messages.size() > 5) {
+        while (messages.size() > 8) {
             messages.removeFirst();
         }
         StringBuilder sb = new StringBuilder();
@@ -260,7 +307,7 @@ public class MainActivity extends Activity implements TextureView.SurfaceTexture
             tvHint.setText("Turn on the controller and the Solo.\nThen tap WiFi (top right) and join SoloLink_xxxx.\nIf the phone says the WiFi has no internet, choose to stay connected.");
         } else if (!controllerOk) {
             setStatus("WiFi OK - no data yet", "#FFAA33");
-            tvHint.setText("Connected to WiFi, waiting for the controller...");
+            tvHint.setText("Connected to WiFi, waiting for the controller...\nTelemetry packets received: " + (t != null ? t.packetCount : 0));
         } else if (!droneOk) {
             setStatus("Controller OK - no Solo", "#FFAA33");
             tvHint.setText("Controller found. Waiting for the Solo to link up...\n(Make sure the Solo's battery is on.)");
